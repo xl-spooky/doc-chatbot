@@ -1,8 +1,10 @@
 Doc Chatbot (Windows .exe)
 
+Now supports a free, offline local mode. Drop your documents in `docs/`, run the app, and it finds the closest matching chunk as the answer. OpenAI remains optional.
+
 Overview
 - Drop your documents into the `docs` folder.
-- Put your OpenAI API key in `api_key.txt` (first line only).
+- Optional: put your OpenAI API key in `api_key.txt` (first line only).
 - Run the app (Python or packaged .exe). It indexes your docs and answers using them with citations.
 - Supports `.pdf`, `.docx`, `.txt`, `.md`, `.csv`, `.html/.htm`, `.pptx`, `.xlsx`, `.rtf`.
 
@@ -21,10 +23,12 @@ Folder Layout
 - `storage/config.json` - saved settings
 
 For End Users (no Python required)
-- Download `DocChatbot.exe` from GitHub Releases (or the latest Actions run artifact).
-- Place your files next to the exe:
-  - Put your OpenAI API key in `api_key.txt` (first line only).
-  - Drop documents into `docs\` (subfolders are fine).
+- Download `DocChatbot-win64.zip` from GitHub Releases (or the latest Actions run artifact) and unzip it.
+- Inside you’ll find:
+  - `DocChatbot.exe`
+  - `docs/` (empty) — put your files here (subfolders are fine)
+  - `api_key.txt` (optional) — add your OpenAI key to enable cloud chat
+  - `README.txt` — quick instructions
 - Double-click `DocChatbot.exe`. It auto-indexes on startup and watches the folder in real time.
 - Ask questions; answers are grounded in your documents with sources.
 
@@ -41,6 +45,33 @@ Optional local run (developer machine)
 - Install Python 3.10–3.12 and Poetry
 - `poetry install --no-root`
 - Run without building: `poetry run python main.py`
+
+Local mode
+- Provider defaults to `local` (free/offline).
+- Embeddings use `sentence-transformers` (default: `BAAI/bge-small-en-v1.5`).
+- Retrieval returns the closest chunk(s) as the answer, with sources.
+- Optional hybrid retrieval (BM25 + embeddings) can be enabled in `storage/config.json`.
+
+OpenAI mode
+- Set `"provider": "openai"` in `storage/config.json` and add your key to `api_key.txt`.
+- Uses OpenAI embeddings + chat for answer generation.
+
+Config keys (storage/config.json)
+```
+{
+  "provider": "local",               // "local" (free) or "openai"
+  "embed_model_local": "BAAI/bge-small-en-v1.5",
+  "chat_model": "gpt-4o-mini",       // only if provider == "openai"
+  "embed_model": "text-embedding-3-small", // only if provider == "openai"
+  "top_k": 4,
+  "chunk_chars": 1200,
+  "overlap": 200,
+  "mmr": true,
+  "mmr_lambda": 0.5,
+  "hybrid": false,
+  "hybrid_weight": 0.5
+}
+```
 
 Packaging notes
 - The EXE bundles Python and all dependencies using PyInstaller and `DocChatbot.spec`.

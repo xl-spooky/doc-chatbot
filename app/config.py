@@ -12,13 +12,22 @@ from typing import Any
 from rag import paths
 
 DEFAULTS: dict[str, Any] = {
+    # Provider: 'local' uses free, local embeddings; 'openai' uses OpenAI APIs.
+    "provider": "local",
+    # OpenAI models (used only if provider == 'openai')
     "chat_model": "gpt-4o-mini",
     "embed_model": "text-embedding-3-small",
+    # Local embedding model (used if provider == 'local')
+    "embed_model_local": "BAAI/bge-small-en-v1.5",
+    # Retrieval parameters
     "top_k": 4,
     "chunk_chars": 1200,
     "overlap": 200,
     "mmr": True,
     "mmr_lambda": 0.5,
+    # Hybrid BM25 + embeddings (local provider)
+    "hybrid": False,
+    "hybrid_weight": 0.5,
 }
 
 
@@ -49,6 +58,10 @@ def load_config() -> dict[str, Any]:
     cfg["overlap"] = int(cfg["overlap"])
     cfg["mmr"] = bool(cfg["mmr"])
     cfg["mmr_lambda"] = float(cfg["mmr_lambda"])
+    cfg["hybrid"] = bool(cfg.get("hybrid", False))
+    cfg["hybrid_weight"] = float(cfg.get("hybrid_weight", 0.5))
+    cfg["provider"] = str(cfg.get("provider", "local"))
+    cfg["embed_model_local"] = str(cfg.get("embed_model_local", "BAAI/bge-small-en-v1.5"))
     return cfg
 
 

@@ -68,7 +68,8 @@ class App(tk.Tk):
 
         self._build_ui()
 
-        if not self.api_key:
+        provider = str(self.config_data.get("provider", "local"))
+        if provider == "openai" and not self.api_key:
             messagebox.showinfo(
                 "API Key Needed",
                 "Place your OpenAI API key in api_key.txt (first line).\n"
@@ -80,7 +81,8 @@ class App(tk.Tk):
         # Try to load existing index, then auto-index if docs exist
         self._load_index()
         try:
-            if self.api_key and list_docs():
+            has_docs = bool(list_docs())
+            if (provider != "openai" or self.api_key) and has_docs:
                 self._reindex_background(tag="Indexing documents...")
         except Exception:
             pass
@@ -281,7 +283,8 @@ class App(tk.Tk):
 
     def on_reindex(self) -> None:
         """Kick off a background index rebuild if a client is ready."""
-        if not self.client:
+        provider = str(self.config_data.get("provider", "local"))
+        if provider == "openai" and not self.client:
             messagebox.showwarning("OpenAI", "Load API key first.")
             return
         self._reindex_background()
@@ -313,14 +316,17 @@ class App(tk.Tk):
 
                 cfg = self.config_data
                 cli = self.client
-                if cli is None:
+                provider = str(cfg.get("provider", "local"))
+                if provider == "openai" and cli is None:
                     self.after(0, lambda: messagebox.showwarning("OpenAI", "Load API key first."))
                     return
                 items, mat = build_or_update_index(
                     cli,
                     status_cb=cb,
                     progress_cb=pcb,
+                    provider=provider,
                     embed_model=str(cfg.get("embed_model", "text-embedding-3-small")),
+                    embed_model_local=str(cfg.get("embed_model_local", "BAAI/bge-small-en-v1.5")),
                     chunk_chars=int(cfg.get("chunk_chars", 1200)),
                     overlap=int(cfg.get("overlap", 200)),
                     force_full=self._force_full_next,
@@ -369,12 +375,11 @@ class App(tk.Tk):
             """Background worker that generates an answer for the query."""
             try:
                 cfg = self.config_data
+                provider = str(cfg.get("provider", "local"))
                 cli = self.client
                 mat = self.mat
-                if cli is None or mat is None:
-                    self.after(
-                        0, lambda: messagebox.showwarning("Chat", "Index or client not ready.")
-                    )
+                if (provider == "openai" and cli is None) or mat is None:
+                    self.after(0, lambda: messagebox.showwarning("Chat", "Index or client not ready."))
                     self.after(0, lambda: self._set_status("Ready"))
                     return
                 answer, sources = chat_answer(
@@ -382,11 +387,15 @@ class App(tk.Tk):
                     q,
                     self.items,
                     mat,
+                    provider=provider,
                     chat_model=str(cfg.get("chat_model", "gpt-4o-mini")),
                     embed_model=str(cfg.get("embed_model", "text-embedding-3-small")),
+                    embed_model_local=str(cfg.get("embed_model_local", "BAAI/bge-small-en-v1.5")),
                     top_k=int(cfg.get("top_k", 4)),
                     mmr=bool(cfg.get("mmr", True)),
                     mmr_lambda=float(cfg.get("mmr_lambda", 0.5)),
+                    hybrid=bool(cfg.get("hybrid", False)),
+                    hybrid_weight=float(cfg.get("hybrid_weight", 0.5)),
                 )
                 txt = answer
                 if sources:

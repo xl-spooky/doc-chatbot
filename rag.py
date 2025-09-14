@@ -54,9 +54,36 @@ except Exception:  # pragma: no cover - optional
 try:  # striprtf
     from striprtf.striprtf import rtf_to_text  # type: ignore
 except Exception:  # pragma: no cover - optional
-
     def rtf_to_text(_: str) -> str:  # type: ignore
         return ""
+
+# Optional local embedding (sentence-transformers)
+try:
+    from sentence_transformers import SentenceTransformer  # type: ignore
+except Exception:  # pragma: no cover - optional
+    SentenceTransformer = None  # type: ignore
+
+# Optional BM25 hybrid
+try:
+    from rank_bm25 import BM25Okapi  # type: ignore
+except Exception:  # pragma: no cover - optional
+    BM25Okapi = None  # type: ignore
+
+_LOCAL_EMBEDDER = None
+_LOCAL_EMBEDDER_NAME: str | None = None
+
+def _get_local_embedder(model_name: str):
+    """Load and cache a sentence-transformers model by name."""
+    global _LOCAL_EMBEDDER, _LOCAL_EMBEDDER_NAME
+    if _LOCAL_EMBEDDER is not None and _LOCAL_EMBEDDER_NAME == model_name:
+        return _LOCAL_EMBEDDER
+    if SentenceTransformer is None:
+        raise RuntimeError(
+            "Local embedding requested but sentence-transformers is not installed."
+        )
+    _LOCAL_EMBEDDER = SentenceTransformer(model_name)
+    _LOCAL_EMBEDDER_NAME = model_name
+    return _LOCAL_EMBEDDER
 
 
 APP_NAME = "DocChatbot"
@@ -377,6 +404,13 @@ def embed_texts(client: OpenAI, texts: list[str], embed_model: str) -> list[list
     return out
 
 
+def embed_texts_local(texts: list[str], model_name: str) -> list[list[float]]:
+    """Embed texts locally using sentence-transformers (unit-normalized)."""
+    model = _get_local_embedder(model_name)
+    embs = model.encode(texts, normalize_embeddings=True)
+    return [list(map(float, v)) for v in embs]
+
+
 ProgressCb = Callable[[str, int, int], None] | None
 
 
@@ -407,7 +441,9 @@ def build_or_update_index(
     status_cb=None,
     progress_cb: ProgressCb = None,
     *,
+    provider: str = "openai",
     embed_model: str = DEFAULT_EMBED_MODEL,
+    embed_model_local: str = "BAAI/bge-small-en-v1.5",
     chunk_chars: int = 1200,
     overlap: int = 200,
     force_full: bool = False,
@@ -470,7 +506,11 @@ def build_or_update_index(
                 status_cb(f"Embedding {doc_name} ({len(chunks)} chunks)…")
             if progress_cb and total_new_chunks > 0:
                 progress_cb("embedding", done_chunks, total_new_chunks)
-            embs = embed_texts(client, chunks, embed_model)
+            embs = (
+                embed_texts_local(chunks, embed_model_local)
+                if provider == "local"
+                else embed_texts(client, chunks, embed_model)
+            )
             for ci, (t, e) in enumerate(zip(chunks, embs, strict=False)):
                 uid = hashlib.sha1(f"{path_any}:{mtime}:{ci}".encode()).hexdigest()
                 to_add.append(
@@ -625,6 +665,67 @@ def retrieve(
     return [(items[i], float(sims[i])) for i in selected]
 
 
+def retrieve_local(
+    items: list[IndexItem],
+    mat: np.ndarray,
+    query: str,
+    *,
+    embed_model_local: str = "BAAI/bge-small-en-v1.5",
+    top_k: int = 4,
+    mmr: bool = True,
+    mmr_lambda: float = 0.5,
+    hybrid: bool = False,
+    hybrid_weight: float = 0.5,
+) -> list[tuple[IndexItem, float]]:
+    """Local retrieval using sentence-transformers and optional BM25 hybrid."""
+    if not items:
+        return []
+    model = _get_local_embedder(embed_model_local)
+    q = np.array(model.encode([query], normalize_embeddings=True)[0], dtype=np.float32)
+    sims = mat @ q
+
+    if hybrid and BM25Okapi is not None:
+        corpus_tokens = [it.text.lower().split() for it in items]
+        bm25 = BM25Okapi(corpus_tokens)
+        bm25_scores = np.array(bm25.get_scores(query.lower().split()), dtype=np.float32)
+        s = sims.copy()
+        if s.size:
+            s = (s - s.min()) / (s.max() - s.min() + 1e-12)
+        b = bm25_scores
+        if b.size:
+            b = (b - b.min()) / (b.max() - b.min() + 1e-12)
+        sims = (1.0 - float(hybrid_weight)) * s + float(hybrid_weight) * b
+
+    if not mmr:
+        idx = np.argsort(-sims)[:top_k]
+        return [(items[int(i)], float(sims[int(i)])) for i in idx]
+
+    selected: list[int] = []
+    candidates = list(np.argsort(-sims))
+    if not candidates:
+        return []
+    selected.append(int(candidates.pop(0)))
+    for _ in range(top_k - 1):
+        best_score = -1e9
+        best_idx = None
+        for c in candidates:
+            rel = sims[int(c)]
+            div = 0.0
+            for s in selected:
+                div = max(div, float(mat[int(c)] @ mat[int(s)]))
+            score = mmr_lambda * rel - (1 - mmr_lambda) * div
+            if score > best_score:
+                best_score = score
+                best_idx = int(c)
+        if best_idx is None:
+            break
+        selected.append(best_idx)
+        candidates.remove(best_idx)
+        if not candidates:
+            break
+    return [(items[i], float(sims[i])) for i in selected]
+
+
 if TYPE_CHECKING:
     from openai.types.chat import ChatCompletionMessageParam as _Msg
 else:  # At runtime, keep it simple to avoid heavy imports
@@ -663,23 +764,40 @@ def chat_answer(
     items: list[IndexItem],
     mat: np.ndarray,
     *,
+    provider: str = "openai",
     chat_model: str = DEFAULT_CHAT_MODEL,
     embed_model: str = DEFAULT_EMBED_MODEL,
+    embed_model_local: str = "BAAI/bge-small-en-v1.5",
     top_k: int = 4,
     mmr: bool = True,
     mmr_lambda: float = 0.5,
     min_relevance: float = 0.12,
+    hybrid: bool = False,
+    hybrid_weight: float = 0.5,
 ) -> tuple[str, list[str]]:
-    retrieved_scored = retrieve(
-        client,
-        items,
-        mat,
-        query,
-        top_k=top_k,
-        embed_model=embed_model,
-        mmr=mmr,
-        mmr_lambda=mmr_lambda,
-    )
+    if provider == "local":
+        retrieved_scored = retrieve_local(
+            items,
+            mat,
+            query,
+            embed_model_local=embed_model_local,
+            top_k=top_k,
+            mmr=mmr,
+            mmr_lambda=mmr_lambda,
+            hybrid=hybrid,
+            hybrid_weight=hybrid_weight,
+        )
+    else:
+        retrieved_scored = retrieve(
+            client,
+            items,
+            mat,
+            query,
+            top_k=top_k,
+            embed_model=embed_model,
+            mmr=mmr,
+            mmr_lambda=mmr_lambda,
+        )
     if not retrieved_scored:
         raise RuntimeError("No relevant information found in your documents for this question.")
     best_score = max(s for _, s in retrieved_scored)
@@ -687,12 +805,15 @@ def chat_answer(
         raise RuntimeError("No relevant information found in your documents for this question.")
 
     retrieved_items = [it for it, _ in retrieved_scored]
-    msgs = build_prompt(query, retrieved_items)
-    resp = client.chat.completions.create(
-        model=chat_model,
-        messages=msgs,  # type: ignore[arg-type]
-        temperature=0.2,
-    )
-    answer = resp.choices[0].message.content or ""
+    if provider == "local":
+        answer = retrieved_items[0].text
+    else:
+        msgs = build_prompt(query, retrieved_items)
+        resp = client.chat.completions.create(
+            model=chat_model,
+            messages=msgs,  # type: ignore[arg-type]
+            temperature=0.2,
+        )
+        answer = resp.choices[0].message.content or ""
     srcs = [f"[{i + 1}] {it.doc_name}" for i, it in enumerate(retrieved_items)]
     return answer, srcs

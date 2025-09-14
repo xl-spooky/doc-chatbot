@@ -18,6 +18,8 @@ striprtf = ">=0.0.26"
 "pdfminer.six" = ">=20221105"
 lxml = ">=5.2.2"
 pillow = ">=10.4.0"
+sentence-transformers = ">=3.0.0"
+rank-bm25 = ">=0.2.2"
 
 [tool.poetry.group.dev.dependencies]
 pyinstaller = ">=6.1"
