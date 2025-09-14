@@ -40,8 +40,16 @@ def main() -> None:
     # Copy executable
     shutil.copy2(dist_exe, os.path.join(stage, "DocChatbot.exe"))
 
-    # Create docs folder
-    ensure_dir(os.path.join(stage, "docs"))
+    # Create docs folder with a placeholder so it appears in the ZIP
+    docs_dir = os.path.join(stage, "docs")
+    ensure_dir(docs_dir)
+    placeholder = os.path.join(docs_dir, "PUT_YOUR_DOCUMENTS_HERE.txt")
+    if not os.path.exists(placeholder):
+        with open(placeholder, "w", encoding="utf-8") as f:
+            f.write(
+                "Place your PDFs and supported documents in this folder.\n"
+                "Supported: PDF, DOCX, TXT/MD, CSV, HTML/HTM, PPTX, XLSX, RTF.\n"
+            )
 
     # Create README.txt with instructions
     readme_path = os.path.join(stage, "README.txt")
