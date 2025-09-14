@@ -1,0 +1,45 @@
+name: Build Windows Zip
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Poetry
+        run: |
+          pip install --upgrade pip
+          pip install poetry
+          poetry --version
+
+      - name: Install dependencies
+        run: |
+          poetry config virtualenvs.create false
+          poetry install --no-root --no-interaction --no-ansi
+
+      - name: Build exe with PyInstaller
+        run: |
+          pyinstaller --noconfirm --onefile --name DocChatbot main.py
+
+      - name: Create release zip
+        run: |
+          python tools/package_release.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DocChatbot-win64
+          path: DocChatbot-win64.zip
+
