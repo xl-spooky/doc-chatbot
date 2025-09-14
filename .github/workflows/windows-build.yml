@@ -1,4 +1,4 @@
-name: build-windows-exe
+﻿name: build-windows-exe
 
 on:
   workflow_dispatch:
@@ -29,7 +29,7 @@ jobs:
       - name: Install dependencies (preinstall Torch CPU)
         run: |
           python -m pip install --upgrade pip
-          python -m pip install --index-url https://download.pytorch.org/whl/cpu torch --extra-index-url https://pypi.org/simple
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
           poetry install --no-root
 
       - name: Build EXE with PyInstaller (spec)
@@ -63,3 +63,4 @@ jobs:
           files: |
             dist/DocChatbot.exe
             dist/DocChatbot-win.zip
+

@@ -1,4 +1,4 @@
-name: Build Windows Zip
+﻿name: Build Windows Zip
 
 on:
   workflow_dispatch:
@@ -22,7 +22,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           REM Pre-install PyTorch CPU wheels so sentence-transformers resolves cleanly
-          python -m pip install --index-url https://download.pytorch.org/whl/cpu torch --extra-index-url https://pypi.org/simple
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
           python -m pip install poetry
           poetry --version
 
@@ -51,3 +51,4 @@ jobs:
         with:
           files: |
             DocChatbot-win64.zip
+
