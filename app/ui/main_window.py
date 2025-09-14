@@ -38,11 +38,11 @@ class App(tk.Tk):
     """Main application window for interacting with the Doc Chatbot."""
 
     def __init__(self) -> None:
-        """Initialize the UI, client, cached index, and file watcher.
+        """Initialize the local-only UI, index, and file watcher.
 
-        Builds widgets, reads the API key, initializes the OpenAI client
-        when available, attempts to load a cached index, and starts a
-        background watcher to reindex when documents change.
+        Builds widgets, loads a cached index if present, and starts a
+        background watcher to reindex when documents change. No API keys
+        or remote services are used.
         """
         super().__init__()
         self.title("Doc Chatbot")

@@ -43,27 +43,20 @@ def main() -> None:
     # Create docs folder
     ensure_dir(os.path.join(stage, "docs"))
 
-    # Create api_key.txt placeholder
-    api_path = os.path.join(stage, "api_key.txt")
-    if not os.path.exists(api_path):
-        with open(api_path, "w", encoding="utf-8") as f:
-            f.write("")
-
     # Create README.txt with instructions
     readme_path = os.path.join(stage, "README.txt")
     with open(readme_path, "w", encoding="utf-8") as f:
         f.write(
-            "DocChatbot – Quick Start\n"
+            "DocChatbot – Quick Start (Local Mode)\n"
             "\n"
-            "1) Put your OpenAI API key in api_key.txt (first line only).\n"
-            "2) Place your PDFs (and supported docs) into the docs/ folder.\n"
-            "3) Double‑click DocChatbot.exe to run.\n"
+            "1) Place your PDFs (and supported docs) into the docs/ folder.\n"
+            "2) Double‑click DocChatbot.exe to run.\n"
+            "\n"
+            "The app indexes your documents locally and answers by selecting the\n"
+            "closest relevant chunk. No API keys or network services are used.\n"
             "\n"
             "Supported file types: PDF, DOCX, TXT/MD, CSV, HTML/HTM, PPTX, XLSX, RTF.\n"
             "You can add/remove files in docs/ at any time; the app can reindex.\n"
-            "\n"
-            "Note: No data leaves your machine except calls to OpenAI APIs for\n"
-            "embeddings and chat. Ensure your API key has the proper access.\n"
         )
 
     # Create zip
@@ -82,4 +75,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

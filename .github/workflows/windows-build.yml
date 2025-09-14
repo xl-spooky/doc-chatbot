@@ -37,7 +37,6 @@ jobs:
         run: |
           New-Item -ItemType Directory -Path dist\docs -Force | Out-Null
           if (Test-Path docs) { robocopy docs dist\docs /E | Out-Null }
-          if (Test-Path api_key.txt) { Copy-Item api_key.txt dist\api_key.txt -Force } else { "YOUR_OPENAI_API_KEY" | Out-File -Encoding ASCII dist\api_key.txt }
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -52,7 +51,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
         run: |
-          Compress-Archive -Path dist\DocChatbot.exe, dist\api_key.txt -DestinationPath dist\DocChatbot-win.zip -Force
+          Compress-Archive -Path dist\DocChatbot.exe -DestinationPath dist\DocChatbot-win.zip -Force
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
