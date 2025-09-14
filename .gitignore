@@ -1,0 +1,22 @@
+# Byte-compiled / cache / logs
+__pycache__/
+*.py[cod]
+*$py.class
+*.log
+
+# Virtual environments
+.venv/
+venv/
+
+# Editor/IDE settings
+.idea/
+
+# Build artifacts
+dist/
+build/
+
+# Temp/debug outputs
+tmp_*.txt
+hex_*.txt
+ui_num.txt
+app_ui_*.txt
