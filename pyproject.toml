@@ -1,0 +1,57 @@
+[tool.poetry]
+name = "doc-chatbot"
+version = "0.1.0"
+description = "Local PDF RAG chatbot with Windows .exe packaging"
+authors = ["xl_spooky <spkydevelopment@gmail.com>"]
+package-mode = false
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.13"
+openai = ">=1.37.0"
+pypdf = ">=4.2.0"
+numpy = ">=1.26.0"
+watchdog = ">=4.0.0"
+python-docx = ">=1.1.0"
+python-pptx = ">=0.6.23"
+openpyxl = ">=3.1.5"
+striprtf = ">=0.0.26"
+"pdfminer.six" = ">=20221105"
+lxml = ">=5.2.2"
+pillow = ">=10.4.0"
+
+[tool.poetry.group.dev.dependencies]
+pyinstaller = ">=6.1"
+ruff = ">=0.5.0"
+
+[build-system]
+requires = ["poetry-core>=1.8.0"]
+build-backend = "poetry.core.masonry.api"
+
+# Ruff configuration
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+  "E",   # pycodestyle errors
+  "F",   # pyflakes
+  "I",   # isort
+  "UP",  # pyupgrade
+  "B",   # flake8-bugbear
+  "C4",  # flake8-comprehensions
+  "SIM", # flake8-simplify
+]
+ignore = [
+  # Allow unused imports in __init__ files
+  "F401",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "rag"]
+combine-as-imports = true
+
+[tool.ruff.format]
+quote-style = "preserve"
+indent-style = "space"
+line-ending = "auto"
