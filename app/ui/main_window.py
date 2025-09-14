@@ -21,20 +21,16 @@ from app.watcher import DocsWatcher
 from rag import (
     build_or_update_index,
     chat_answer,
-    create_client,
     ensure_dirs,
     list_docs,
     load_index_cached,
     paths,
-    read_api_key,
 )
 
 from .dialogs import SettingsDialog
 from .docs_manager import DocsManager
 
 if TYPE_CHECKING:
-    from openai import OpenAI
-
     from rag import IndexItem
 
 
@@ -55,8 +51,7 @@ class App(tk.Tk):
 
         ensure_dirs()
 
-        self.api_key: str | None = read_api_key()
-        self.client: OpenAI | None = None
+        # Local mode only; no remote client needed
         self.items: list[IndexItem] = []
         self.mat: np.ndarray | None = None
         self.config_data = load_config()
@@ -68,21 +63,13 @@ class App(tk.Tk):
 
         self._build_ui()
 
-        provider = str(self.config_data.get("provider", "local"))
-        if provider == "openai" and not self.api_key:
-            messagebox.showinfo(
-                "API Key Needed",
-                "Place your OpenAI API key in api_key.txt (first line).\n"
-                "Then click 'Reload API Key'.",
-            )
-        else:
-            self._init_client()
+        # No API key or remote client required in local mode
 
         # Try to load existing index, then auto-index if docs exist
         self._load_index()
         try:
             has_docs = bool(list_docs())
-            if (provider != "openai" or self.api_key) and has_docs:
+            if has_docs:
                 self._reindex_background(tag="Indexing documents...")
         except Exception:
             pass
@@ -109,8 +96,7 @@ class App(tk.Tk):
         self.btn_manage_docs = tk.Button(top, text="Manage Docs", command=self.on_manage_docs)
         self.btn_manage_docs.pack(side=tk.LEFT, padx=(8, 0))
 
-        self.btn_reload_key = tk.Button(top, text="Reload API Key", command=self.on_reload_key)
-        self.btn_reload_key.pack(side=tk.LEFT, padx=(8, 0))
+        # No API key needed in local mode
 
         self.btn_clear = tk.Button(top, text="Clear Chat", command=self.on_clear)
         self.btn_clear.pack(side=tk.LEFT, padx=(8, 0))
@@ -215,17 +201,7 @@ class App(tk.Tk):
         self.txt_chat.see(tk.END)
         self.txt_chat.configure(state=tk.DISABLED)
 
-    def _init_client(self) -> None:
-        """Initialize the OpenAI client using the loaded API key."""
-        try:
-            api_key = self.api_key
-            if api_key is None:
-                self.client = None
-                return
-            self.client = create_client(api_key)
-        except Exception as e:
-            messagebox.showerror("OpenAI", f"Failed to init client: {e}")
-            self.client = None
+    # No remote client initialization required
 
     def _load_index(self) -> None:
         """Load the cached index into memory and update status."""
@@ -315,17 +291,9 @@ class App(tk.Tk):
                     self.after(0, lambda: self._set_progress(cur, total))
 
                 cfg = self.config_data
-                cli = self.client
-                provider = str(cfg.get("provider", "local"))
-                if provider == "openai" and cli is None:
-                    self.after(0, lambda: messagebox.showwarning("OpenAI", "Load API key first."))
-                    return
                 items, mat = build_or_update_index(
-                    cli,
                     status_cb=cb,
                     progress_cb=pcb,
-                    provider=provider,
-                    embed_model=str(cfg.get("embed_model", "text-embedding-3-small")),
                     embed_model_local=str(cfg.get("embed_model_local", "BAAI/bge-small-en-v1.5")),
                     chunk_chars=int(cfg.get("chunk_chars", 1200)),
                     overlap=int(cfg.get("overlap", 200)),
@@ -361,9 +329,7 @@ class App(tk.Tk):
         self.entry.delete(0, tk.END)
         self._append_chat("You", q)
 
-        if not self.client:
-            messagebox.showwarning("OpenAI", "Load API key first.")
-            return
+        # Local mode only; no remote client required
         if not self.items:
             if messagebox.askyesno("No Index", "No index found. Rebuild now?"):
                 self.on_reindex()
@@ -375,21 +341,15 @@ class App(tk.Tk):
             """Background worker that generates an answer for the query."""
             try:
                 cfg = self.config_data
-                provider = str(cfg.get("provider", "local"))
-                cli = self.client
                 mat = self.mat
-                if (provider == "openai" and cli is None) or mat is None:
-                    self.after(0, lambda: messagebox.showwarning("Chat", "Index or client not ready."))
+                if mat is None:
+                    self.after(0, lambda: messagebox.showwarning("Chat", "Index not ready."))
                     self.after(0, lambda: self._set_status("Ready"))
                     return
                 answer, sources = chat_answer(
-                    cli,
                     q,
                     self.items,
                     mat,
-                    provider=provider,
-                    chat_model=str(cfg.get("chat_model", "gpt-4o-mini")),
-                    embed_model=str(cfg.get("embed_model", "text-embedding-3-small")),
                     embed_model_local=str(cfg.get("embed_model_local", "BAAI/bge-small-en-v1.5")),
                     top_k=int(cfg.get("top_k", 4)),
                     mmr=bool(cfg.get("mmr", True)),

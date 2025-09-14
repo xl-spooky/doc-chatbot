@@ -20,7 +20,6 @@ from html.parser import HTMLParser
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from openai import OpenAI
 
 # Optional deps (guarded imports)
 try:  # python-docx
@@ -54,8 +53,10 @@ except Exception:  # pragma: no cover - optional
 try:  # striprtf
     from striprtf.striprtf import rtf_to_text  # type: ignore
 except Exception:  # pragma: no cover - optional
+
     def rtf_to_text(_: str) -> str:  # type: ignore
         return ""
+
 
 # Optional local embedding (sentence-transformers)
 try:
@@ -72,23 +73,20 @@ except Exception:  # pragma: no cover - optional
 _LOCAL_EMBEDDER = None
 _LOCAL_EMBEDDER_NAME: str | None = None
 
+
 def _get_local_embedder(model_name: str):
     """Load and cache a sentence-transformers model by name."""
     global _LOCAL_EMBEDDER, _LOCAL_EMBEDDER_NAME
-    if _LOCAL_EMBEDDER is not None and _LOCAL_EMBEDDER_NAME == model_name:
+    if _LOCAL_EMBEDDER is not None and model_name == _LOCAL_EMBEDDER_NAME:
         return _LOCAL_EMBEDDER
     if SentenceTransformer is None:
-        raise RuntimeError(
-            "Local embedding requested but sentence-transformers is not installed."
-        )
+        raise RuntimeError("Local embedding requested but sentence-transformers is not installed.")
     _LOCAL_EMBEDDER = SentenceTransformer(model_name)
     _LOCAL_EMBEDDER_NAME = model_name
     return _LOCAL_EMBEDDER
 
 
 APP_NAME = "DocChatbot"
-DEFAULT_EMBED_MODEL = "text-embedding-3-small"
-DEFAULT_CHAT_MODEL = "gpt-4o-mini"
 
 
 def base_dir() -> str:
@@ -122,14 +120,7 @@ def ensure_dirs() -> None:
     os.makedirs(p["storage"], exist_ok=True)
 
 
-def read_api_key() -> str | None:
-    """Read the API key from ``api_key.txt`` (first line) if present."""
-    p = paths()["api_key"]
-    if not os.path.exists(p):
-        return None
-    with open(p, encoding="utf-8") as f:
-        key = f.readline().strip()
-        return key or None
+# OpenAI is not used in local mode; API key handling removed.
 
 
 def sha1_file(path: str) -> str:
@@ -387,21 +378,10 @@ def _norm_rows(mat: np.ndarray) -> np.ndarray:
     return mat / norms
 
 
-def create_client(api_key: str) -> OpenAI:
-    """Create an OpenAI client bound to the provided API key."""
-    return OpenAI(api_key=api_key)
+# No remote client is needed in local mode.
 
 
-def embed_texts(client: OpenAI, texts: list[str], embed_model: str) -> list[list[float]]:
-    """Embed a list of texts using the specified embedding model."""
-    out: list[list[float]] = []
-    B = 64
-    for i in range(0, len(texts), B):
-        batch = texts[i : i + B]
-        resp = client.embeddings.create(model=embed_model, input=batch)
-        for item in resp.data:
-            out.append(item.embedding)
-    return out
+# Remote embedding (OpenAI) removed; local embeddings are used instead.
 
 
 def embed_texts_local(texts: list[str], model_name: str) -> list[list[float]]:
@@ -437,12 +417,9 @@ def _extract_text_for_path(path_any: str) -> str:
 
 
 def build_or_update_index(
-    client: OpenAI,
     status_cb=None,
     progress_cb: ProgressCb = None,
     *,
-    provider: str = "openai",
-    embed_model: str = DEFAULT_EMBED_MODEL,
     embed_model_local: str = "BAAI/bge-small-en-v1.5",
     chunk_chars: int = 1200,
     overlap: int = 200,
@@ -459,7 +436,7 @@ def build_or_update_index(
     items: list[IndexItem] = []
 
     # If embedding model changed, force full rebuild
-    if raw and raw.get("embed_model") and raw.get("embed_model") != embed_model:
+    if raw and raw.get("embed_model") and raw.get("embed_model") != embed_model_local:
         force_full = True
 
     # map of existing entries by (doc_path, chunk_index)
@@ -506,11 +483,7 @@ def build_or_update_index(
                 status_cb(f"Embedding {doc_name} ({len(chunks)} chunks)…")
             if progress_cb and total_new_chunks > 0:
                 progress_cb("embedding", done_chunks, total_new_chunks)
-            embs = (
-                embed_texts_local(chunks, embed_model_local)
-                if provider == "local"
-                else embed_texts(client, chunks, embed_model)
-            )
+            embs = embed_texts_local(chunks, embed_model_local)
             for ci, (t, e) in enumerate(zip(chunks, embs, strict=False)):
                 uid = hashlib.sha1(f"{path_any}:{mtime}:{ci}".encode()).hexdigest()
                 to_add.append(
@@ -556,7 +529,7 @@ def build_or_update_index(
     raw_out = {
         "version": 1,
         "built_at": time.time(),
-        "embed_model": embed_model,
+        "embed_model": embed_model_local,
         "embed_dim": (len(items[0].embedding) if items else 0),
         "items": [
             {
@@ -613,59 +586,6 @@ def load_index_cached() -> tuple[list[IndexItem], np.ndarray]:
 
 
 def retrieve(
-    client: OpenAI,
-    items: list[IndexItem],
-    mat: np.ndarray,
-    query: str,
-    *,
-    top_k: int = 4,
-    embed_model: str = DEFAULT_EMBED_MODEL,
-    mmr: bool = True,
-    mmr_lambda: float = 0.5,
-) -> list[tuple[IndexItem, float]]:
-    if not items:
-        return []
-    q_emb = client.embeddings.create(model=embed_model, input=[query]).data[0].embedding
-    q = np.array(q_emb, dtype=np.float32)
-    q = q / (np.linalg.norm(q) + 1e-12)
-    sims = mat @ q  # cosine similarity
-
-    if not mmr:
-        idx = np.argsort(-sims)[:top_k]
-        return [(items[int(i)], float(sims[int(i)])) for i in idx]
-
-    # MMR selection
-    selected: list[int] = []
-    candidates = list(np.argsort(-sims))  # sorted best-first
-    if not candidates:
-        return []
-    selected.append(int(candidates.pop(0)))
-    # Precompute norms and similarities between all docs for diversity
-    # Using cosine sim via dot products; mat rows are unit norm.
-    for _ in range(top_k - 1):
-        best_score = -1e9
-        best_idx = None
-        for c in candidates:
-            # relevance term
-            rel = sims[int(c)]
-            # diversity term: max similarity to already selected
-            div = 0.0
-            for s in selected:
-                div = max(div, float(mat[int(c)] @ mat[int(s)]))
-            score = mmr_lambda * rel - (1 - mmr_lambda) * div
-            if score > best_score:
-                best_score = score
-                best_idx = int(c)
-        if best_idx is None:
-            break
-        selected.append(best_idx)
-        candidates.remove(best_idx)
-        if not candidates:
-            break
-    return [(items[i], float(sims[i])) for i in selected]
-
-
-def retrieve_local(
     items: list[IndexItem],
     mat: np.ndarray,
     query: str,
@@ -726,10 +646,7 @@ def retrieve_local(
     return [(items[i], float(sims[i])) for i in selected]
 
 
-if TYPE_CHECKING:
-    from openai.types.chat import ChatCompletionMessageParam as _Msg
-else:  # At runtime, keep it simple to avoid heavy imports
-    _Msg = dict[str, str]  # type: ignore[misc, assignment]
+_Msg = dict[str, str]
 
 
 def build_prompt(query: str, retrieved: list[IndexItem]) -> list[_Msg]:
@@ -759,14 +676,10 @@ def build_prompt(query: str, retrieved: list[IndexItem]) -> list[_Msg]:
 
 
 def chat_answer(
-    client: OpenAI,
     query: str,
     items: list[IndexItem],
     mat: np.ndarray,
     *,
-    provider: str = "openai",
-    chat_model: str = DEFAULT_CHAT_MODEL,
-    embed_model: str = DEFAULT_EMBED_MODEL,
     embed_model_local: str = "BAAI/bge-small-en-v1.5",
     top_k: int = 4,
     mmr: bool = True,
@@ -775,29 +688,17 @@ def chat_answer(
     hybrid: bool = False,
     hybrid_weight: float = 0.5,
 ) -> tuple[str, list[str]]:
-    if provider == "local":
-        retrieved_scored = retrieve_local(
-            items,
-            mat,
-            query,
-            embed_model_local=embed_model_local,
-            top_k=top_k,
-            mmr=mmr,
-            mmr_lambda=mmr_lambda,
-            hybrid=hybrid,
-            hybrid_weight=hybrid_weight,
-        )
-    else:
-        retrieved_scored = retrieve(
-            client,
-            items,
-            mat,
-            query,
-            top_k=top_k,
-            embed_model=embed_model,
-            mmr=mmr,
-            mmr_lambda=mmr_lambda,
-        )
+    retrieved_scored = retrieve(
+        items,
+        mat,
+        query,
+        embed_model_local=embed_model_local,
+        top_k=top_k,
+        mmr=mmr,
+        mmr_lambda=mmr_lambda,
+        hybrid=hybrid,
+        hybrid_weight=hybrid_weight,
+    )
     if not retrieved_scored:
         raise RuntimeError("No relevant information found in your documents for this question.")
     best_score = max(s for _, s in retrieved_scored)
@@ -805,15 +706,6 @@ def chat_answer(
         raise RuntimeError("No relevant information found in your documents for this question.")
 
     retrieved_items = [it for it, _ in retrieved_scored]
-    if provider == "local":
-        answer = retrieved_items[0].text
-    else:
-        msgs = build_prompt(query, retrieved_items)
-        resp = client.chat.completions.create(
-            model=chat_model,
-            messages=msgs,  # type: ignore[arg-type]
-            temperature=0.2,
-        )
-        answer = resp.choices[0].message.content or ""
+    answer = retrieved_items[0].text
     srcs = [f"[{i + 1}] {it.doc_name}" for i, it in enumerate(retrieved_items)]
     return answer, srcs
