@@ -10,7 +10,6 @@ import os
 import tkinter as tk
 from collections.abc import Callable
 from tkinter import messagebox
-from typing import Optional
 
 from rag import list_docs, paths
 

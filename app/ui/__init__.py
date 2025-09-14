@@ -3,13 +3,12 @@
 Exposes the main application window and related dialogs.
 """
 
-from .main_window import App
 from .dialogs import SettingsDialog
 from .docs_manager import DocsManager
+from .main_window import App
 
 __all__ = [
     "App",
     "SettingsDialog",
     "DocsManager",
 ]
-
