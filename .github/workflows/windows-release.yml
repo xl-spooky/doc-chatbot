@@ -18,16 +18,18 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Poetry
+      - name: Install Poetry and Torch CPU wheels
         run: |
-          pip install --upgrade pip
-          pip install poetry
+          python -m pip install --upgrade pip
+          REM Pre-install PyTorch CPU wheels so sentence-transformers resolves cleanly
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu torch --extra-index-url https://pypi.org/simple
+          python -m pip install poetry
           poetry --version
 
       - name: Install dependencies
         run: |
           poetry config virtualenvs.create false
-          poetry install --no-root --no-interaction --no-ansi
+          poetry install --no-root --no-interaction --no-ansi --only main
 
       - name: Build exe with PyInstaller
         run: |

@@ -26,8 +26,11 @@ jobs:
       - name: Configure Poetry (no venv)
         run: poetry config virtualenvs.create false
 
-      - name: Install dependencies
-        run: poetry install --no-root
+      - name: Install dependencies (preinstall Torch CPU)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu torch --extra-index-url https://pypi.org/simple
+          poetry install --no-root
 
       - name: Build EXE with PyInstaller (spec)
         run: pyinstaller --noconfirm DocChatbot.spec
