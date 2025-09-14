@@ -37,9 +37,4 @@ jobs:
         run: |
           python tools/package_release.py
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: DocChatbot-win64
-          path: DocChatbot-win64.zip
-
+      - name: Upload artifact\n        uses: actions/upload-artifact@v4\n        with:\n          name: DocChatbot-win64\n          path: DocChatbot-win64.zip\n\n      - name: Create GitHub Release\n        if: startsWith(github.ref, 'refs/tags/')\n        uses: softprops/action-gh-release@v2\n        with:\n          files: |\n            DocChatbot-win64.zip\n
