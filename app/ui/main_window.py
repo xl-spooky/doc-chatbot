@@ -242,15 +242,6 @@ class App(tk.Tk):
         except Exception:
             messagebox.showinfo("Docs", f"Folder: {d}")
 
-    def on_reload_key(self) -> None:
-        """Reload the API key from disk and reinitialize the client."""
-        self.api_key = read_api_key()
-        if not self.api_key:
-            messagebox.showwarning("API Key", "api_key.txt missing or empty.")
-            return
-        self._init_client()
-        self._set_status("API key loaded.")
-
     def on_clear(self) -> None:
         """Clear all text from the chat transcript widget."""
         self.txt_chat.configure(state=tk.NORMAL)
@@ -258,11 +249,7 @@ class App(tk.Tk):
         self.txt_chat.configure(state=tk.DISABLED)
 
     def on_reindex(self) -> None:
-        """Kick off a background index rebuild if a client is ready."""
-        provider = str(self.config_data.get("provider", "local"))
-        if provider == "openai" and not self.client:
-            messagebox.showwarning("OpenAI", "Load API key first.")
-            return
+        """Kick off a background index rebuild (local mode)."""
         self._reindex_background()
 
     def _reindex_background(self, tag: str | None = None) -> None:
