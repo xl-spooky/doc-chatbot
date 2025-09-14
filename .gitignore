@@ -20,3 +20,9 @@ tmp_*.txt
 hex_*.txt
 ui_num.txt
 app_ui_*.txt
+# User docs folder (keep placeholder only)
+docs/*
+!docs/.gitkeep
+
+# Secrets / local config
+api_key.txt
