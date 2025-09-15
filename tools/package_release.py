@@ -26,10 +26,11 @@ def ensure_dir(p: str) -> None:
 
 def main() -> None:
     dist_exe = os.path.join(ROOT, "dist", "DocChatbot.exe")
-    if not os.path.exists(dist_exe):
+    dist_dir = os.path.join(ROOT, "dist", "DocChatbot")
+    if not (os.path.exists(dist_exe) or os.path.isdir(dist_dir)):
         raise SystemExit(
-            "Missing dist/DocChatbot.exe. Build it first with PyInstaller "
-            "(e.g., `pyinstaller --noconfirm --onefile --name DocChatbot main.py`)."
+            "Missing PyInstaller output. Build it first:"
+            " onefile -> dist/DocChatbot.exe or onedir -> dist/DocChatbot/"
         )
 
     stage = os.path.join(ROOT, "release")
@@ -37,11 +38,16 @@ def main() -> None:
         shutil.rmtree(stage)
     ensure_dir(stage)
 
-    # Copy executable
-    shutil.copy2(dist_exe, os.path.join(stage, "DocChatbot.exe"))
+    # Copy app output (prefer onedir build)
+    if os.path.isdir(dist_dir):
+        target_app = os.path.join(stage, "DocChatbot")
+        shutil.copytree(dist_dir, target_app)
+    else:
+        target_app = stage
+        shutil.copy2(dist_exe, os.path.join(stage, "DocChatbot.exe"))
 
     # Create docs folder with a placeholder so it appears in the ZIP
-    docs_dir = os.path.join(stage, "docs")
+    docs_dir = os.path.join(target_app, "docs")
     ensure_dir(docs_dir)
     placeholder = os.path.join(docs_dir, "PUT_YOUR_DOCUMENTS_HERE.txt")
     if not os.path.exists(placeholder):
@@ -52,7 +58,7 @@ def main() -> None:
             )
 
     # Create README.txt with instructions
-    readme_path = os.path.join(stage, "README.txt")
+    readme_path = os.path.join(target_app, "README.txt")
     with open(readme_path, "w", encoding="utf-8") as f:
         f.write(
             "DocChatbot – Quick Start (Local Mode)\n"
@@ -72,10 +78,13 @@ def main() -> None:
     if os.path.exists(zip_path):
         os.remove(zip_path)
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for root, _, files in os.walk(stage):
+        base = target_app
+        for root, _, files in os.walk(base):
             for fn in files:
                 abspath = os.path.join(root, fn)
-                rel = os.path.relpath(abspath, stage)
+                rel = os.path.relpath(abspath, base)
+                # Place contents under DocChatbot/ inside the ZIP
+                rel = os.path.join("DocChatbot", rel)
                 zf.write(abspath, rel)
 
     print(f"Created {zip_path}")

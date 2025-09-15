@@ -45,12 +45,12 @@ jobs:
             pillow `
             watchdog
 
-      - name: Build EXE with PyInstaller
+      - name: Build EXE with PyInstaller (one-dir, no console)
         shell: pwsh
         run: |
-          pyinstaller --noconfirm --onefile --name DocChatbot main.py
+          pyinstaller --noconfirm --onedir --noconsole --name DocChatbot main.py
 
-      - name: Create release ZIP (exe + docs placeholder + README)
+      - name: Create release ZIP (app folder + docs placeholder + README)
         shell: pwsh
         run: |
           python tools/package_release.py
